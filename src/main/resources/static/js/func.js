@@ -1,12 +1,14 @@
+/*소켓관련 부분 시작*/
 var conn = new WebSocket('ws://localhost:8080/socket');
-
+var localVideo = document.getElementById("localVideo");
+var remoteVideo = document.getElementById("remoteVideo");;
+var peerConnection;
 conn.onopen = function() {
     console.log("Connected to the signaling server");
     initialize();
 };
 
 conn.onmessage = function(msg) {
-    console.log("Got message", msg.data);
     var content = JSON.parse(msg.data);
     var data = content.data;
     switch (content.event) {
@@ -28,48 +30,6 @@ conn.onmessage = function(msg) {
 
 function send(message) {
     conn.send(JSON.stringify(message));
-}
-
-var peerConnection;
-var dataChannel;
-var input = document.getElementById("messageInput");
-
-function initialize() {
-    var configuration = null;
-
-    peerConnection = new RTCPeerConnection(configuration, {
-        optional : [ {
-            RtpDataChannels : true
-        } ]
-    });
-
-    // Setup ice handling
-    peerConnection.onicecandidate = function(event) {
-        if (event.candidate) {
-            send({
-                event : "candidate",
-                data : event.candidate
-            });
-        }
-    };
-
-    // creating data channel
-    dataChannel = peerConnection.createDataChannel("dataChannel", {
-        reliable : true
-    });
-
-    dataChannel.onerror = function(error) {
-        console.log("Error occured on datachannel:", error);
-    };
-
-    // when we receive a message from the other peer, printing it on the console
-    dataChannel.onmessage = function(event) {
-        console.log("message:", event.data);
-    };
-
-    dataChannel.onclose = function() {
-        console.log("data channel is closed");
-    };
 }
 
 function createOffer() {
@@ -101,7 +61,7 @@ function handleOffer(offer) {
 };
 
 function handleCandidate(candidate) {
-    peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    peerConnection.addIceCandidate(candidate);
 };
 
 function handleAnswer(answer) {
@@ -109,7 +69,41 @@ function handleAnswer(answer) {
     console.log("connection established successfully!!");
 };
 
-function sendMessage() {
-    dataChannel.send(input.value);
-    input.value = "";
+/*소켓관련 부분 끝*/
+
+function initialize() {
+    //여기엔 NAT관련 STUN이나 TURN?이 들어가야 함
+    var configuration = null;
+
+    peerConnection = new RTCPeerConnection(configuration);
+
+
+    const constraints = {
+        video : true,
+        audio : true
+    };
+
+    navigator.mediaDevices.getUserMedia(constraints).
+    then(function(stream){
+        localVideo.srcObject = stream;
+        peerConnection.addStream(stream);
+        createOffer();
+    })
+        .catch(function(error){
+            console.log(error);
+        })
+
+    peerConnection.onicecandidate = function(event) {
+        if (event.candidate) {
+            send({
+                event : "candidate",
+                data : event.candidate
+            });
+        }
+    };
+
+    peerConnection.onaddstream = function(event) {
+        remoteVideo.srcObject = event.stream;
+    };
 }
+
